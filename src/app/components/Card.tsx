@@ -105,13 +105,14 @@ const getSettings = async (): Promise<null | Settings> => {
     })
 }
 
-const isWeekend = (): boolean => {
-  return dayjs().day() == 0 || dayjs().day() == 6
+const isWeekend = (d: dayjs.Dayjs): boolean => {
+  return d.day() == 0 || d.day() == 6
 }
 
-const getSeason = (setting: Settings | null): [string, string] => {
-  const today = dayjs()
-
+const getSeason = (
+  setting: Settings | null,
+  d: dayjs.Dayjs
+): [string, string] => {
   if (setting === null) {
     // Error fetching settings
     return ['', '']
@@ -138,7 +139,7 @@ const getSeason = (setting: Settings | null): [string, string] => {
         .set('second', 59),
     ]
 
-    const todayUnix = today.unix()
+    const todayUnix = d.unix()
 
     const convertedHoliday = setting.holiday.map((s) => dayjs(s, 'YYYY-MM-DD'))
     const convertedHaltDay = setting.halt.map((s) => dayjs(s, 'YYYY-MM-DD'))
@@ -147,9 +148,9 @@ const getSeason = (setting: Settings | null): [string, string] => {
 
     for (const holiday of convertedHoliday) {
       if (
-        today.year() == holiday.year() &&
-        today.month() == holiday.month() &&
-        today.date() == holiday.date()
+        d.year() == holiday.year() &&
+        d.month() == holiday.month() &&
+        d.date() == holiday.date()
       ) {
         isHoliday = true
         break
@@ -158,9 +159,9 @@ const getSeason = (setting: Settings | null): [string, string] => {
 
     for (const haltDay of convertedHaltDay) {
       if (
-        today.year() == haltDay.year() &&
-        today.month() == haltDay.month() &&
-        today.date() == haltDay.date()
+        d.year() == haltDay.year() &&
+        d.month() == haltDay.month() &&
+        d.date() == haltDay.date()
       ) {
         return ['halt', '']
       }
@@ -168,7 +169,7 @@ const getSeason = (setting: Settings | null): [string, string] => {
 
     if (semesterStart.unix() < todayUnix && todayUnix < semesterEnd.unix()) {
       // Semester
-      if (isWeekend() || isHoliday) {
+      if (isWeekend(d) || isHoliday) {
         return ['semester', 'weekend']
       } else {
         return ['semester', 'week']
@@ -178,7 +179,7 @@ const getSeason = (setting: Settings | null): [string, string] => {
       todayUnix < vacationSessionEnd.unix()
     ) {
       // Vacation Session
-      if (isWeekend() || isHoliday) {
+      if (isWeekend(d) || isHoliday) {
         return ['vacation_session', 'weekend']
       } else {
         return ['vacation_session', 'week']
@@ -188,7 +189,7 @@ const getSeason = (setting: Settings | null): [string, string] => {
       todayUnix < vacationEnd.unix()
     ) {
       // Vacation
-      if (isWeekend() || isHoliday) {
+      if (isWeekend(d) || isHoliday) {
         return ['vacation', 'weekend']
       } else {
         return ['vacation', 'week']
@@ -233,13 +234,18 @@ const timetableApi = async (url: string): Promise<Array<SingleSchedule>> => {
 const getTimetable = async (
   season: string,
   week: string,
-  location: string
+  location: string,
+  d: dayjs.Dayjs
 ): Promise<Array<SingleSchedule>> => {
   return await timetableApi(
     `https://api.hybus.app/timetable/${season}/${week}/${location}`
   ).then((res) =>
     res.map((val) => {
-      val['time'] = String(dayjs(val.time, 'HH:mm').unix())
+      const parsed = dayjs(val.time, 'HH:mm')
+      parsed.set('year', d.year())
+      parsed.set('month', d.month())
+      parsed.set('date', d.date())
+      val['time'] = String(parsed.unix())
       return val
     })
   )
@@ -372,7 +378,7 @@ export const Card = ({ location }: ScheduleInfo) => {
   // For setting season & week values
   useEffect(() => {
     if (setting != null) {
-      const [s, w] = getSeason(setting)
+      const [s, w] = getSeason(setting, dayjs())
       setSeason(s)
       setWeek(w)
     }
@@ -381,7 +387,7 @@ export const Card = ({ location }: ScheduleInfo) => {
   // For fetching the timetable for the initial time
   useEffect(() => {
     if (season !== '' && week !== '' && !isLoaded) {
-      getTimetable(season, week, location).then((res) => {
+      getTimetable(season, week, location, dayjs()).then((res) => {
         setTimetable(res)
         setSpinning(false)
         setLoaded(true)
@@ -405,7 +411,7 @@ export const Card = ({ location }: ScheduleInfo) => {
     ) {
       setSpinning(true)
       setTimetable([])
-      getTimetable(season, week, location).then((res) => {
+      getTimetable(season, week, location, dayjs()).then((res) => {
         setTimetable(res)
         setSpinning(false)
         setCurrentLocation(location)
